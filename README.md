@@ -26,3 +26,14 @@ Environment overrides:
 
 - `PROJECTS_DIR`: root to search (default `~/Projects`)
 - `PROJECTS_DEPTH`: max `find` depth (default `1`)
+
+### `tcs`
+
+Shows a table of running Claude Code sessions: name, status (`busy`/`idle`),
+tmux location, working directory, and when the status last changed. Inside tmux
+it opens in an 80%×80% popup; outside tmux it prints inline. Press `r` to
+refresh, any other key to close.
+
+Data comes from the registry Claude Code writes to `~/.claude/sessions/<pid>.json`
+(or `$CLAUDE_CONFIG_DIR/sessions`); entries whose process has exited are skipped.
+Requires `jq`.

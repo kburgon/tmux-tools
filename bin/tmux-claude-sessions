@@ -1,0 +1,59 @@
+#!/usr/bin/env zsh
+# Show a table of running Claude Code sessions and their status.
+# Reads the session registry Claude Code keeps in ~/.claude/sessions/<pid>.json.
+
+sessions_dir="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/sessions"
+
+# Human-readable age from a millisecond epoch timestamp.
+function age {
+	local secs=$(( EPOCHSECONDS - $1 / 1000 ))
+	if (( secs < 60 )); then print "${secs}s"
+	elif (( secs < 3600 )); then print "$(( secs / 60 ))m"
+	elif (( secs < 86400 )); then print "$(( secs / 3600 ))h"
+	else print "$(( secs / 86400 ))d"
+	fi
+}
+
+function render {
+	zmodload zsh/datetime
+	local f pid proc_start stat name sess_status cwd tmux_loc updated pane loc
+	local -a rows=("NAME	STATUS	TMUX	DIR	UPDATED")
+
+	for f in "$sessions_dir"/<->.json(N); do
+		IFS=$'\t' read -r pid proc_start name sess_status cwd tmux_loc updated < <(
+			jq -r '[.pid, .procStart, .name, .status, .cwd, (.tmux // ""), (.statusUpdatedAt // .updatedAt)] | @tsv' "$f"
+		)
+
+		# Skip stale entries: the process is gone, or the pid was reused.
+		[[ -r /proc/$pid/stat ]] || continue
+		stat=$(</proc/$pid/stat)
+		stat=${stat##*) }
+		[[ ${${=stat}[20]} == "$proc_start" ]] || continue
+
+		# Registry stores "session:@window.%pane"; show the current session:window.pane.
+		loc="-"
+		if [[ -n "$tmux_loc" ]]; then
+			pane=${tmux_loc##*.}
+			loc=$(tmux display-message -p -t "$pane" '#S:#I.#P' 2>/dev/null) || loc="$tmux_loc"
+		fi
+
+		rows+=("$name	$sess_status	$loc	${cwd/#$HOME/~}	$(age $updated) ago")
+	done
+
+	clear
+	if (( ${#rows} == 1 )); then
+		print "No running Claude sessions."
+	else
+		print -l -- $rows | column -t -s $'\t' |
+			sed -e '1s/.*/\x1b[1m&\x1b[0m/' \
+				-e 's/\bbusy\b/\x1b[33m&\x1b[0m/' \
+				-e 's/\bidle\b/\x1b[32m&\x1b[0m/'
+	fi
+	print "\n\e[2mr: refresh · any other key: close\e[0m"
+}
+
+while true; do
+	render
+	read -rsk1 key
+	[[ $key == r ]] || break
+done

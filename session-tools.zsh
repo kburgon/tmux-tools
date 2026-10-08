@@ -13,3 +13,14 @@ function tp {
 		"$picker"
 	fi
 }
+
+# tcs: show running Claude Code sessions and their status.
+# Inside tmux the table shows in a popup; outside it runs inline.
+function tcs {
+	local viewer="$SESSION_TOOLS_DIR/bin/tmux-claude-sessions"
+	if [[ -n "$TMUX" ]]; then
+		tmux display-popup -E -w 80% -h 80% -T ' Claude sessions ' "$viewer"
+	else
+		"$viewer"
+	fi
+}
