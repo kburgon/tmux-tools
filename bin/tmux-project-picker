@@ -1,0 +1,31 @@
+#!/usr/bin/env zsh
+# Pick a directory under $PROJECTS_DIR with fzf and open (or switch to) a
+# tmux session rooted there.
+
+projects_dir="${PROJECTS_DIR:-$HOME/Projects}"
+max_depth="${PROJECTS_DEPTH:-1}"
+
+selected=$(
+	find "$projects_dir" -mindepth 1 -maxdepth "$max_depth" \
+		\( -name '.*' -o -name node_modules -o -name bin -o -name obj -o -name target -o -name __pycache__ \) -prune \
+		-o -type d -printf '%P\n' |
+		sort |
+		fzf --reverse --prompt='project> ' \
+			--preview="tree -C -L 1 '$projects_dir'/{}"
+)
+
+[[ -z "$selected" ]] && exit 0
+
+dir="$projects_dir/$selected"
+# tmux session names can't contain '.' or ':'
+name="${selected//[\/.:]/_}"
+
+if ! tmux has-session -t "=$name" 2>/dev/null; then
+	tmux new-session -d -s "$name" -c "$dir"
+fi
+
+if [[ -n "$TMUX" ]]; then
+	tmux switch-client -t "=$name"
+else
+	tmux attach-session -t "=$name"
+fi
