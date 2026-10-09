@@ -24,3 +24,28 @@ function tcs {
 		"$viewer"
 	fi
 }
+
+# th: pick an ssh host and connect, attaching to tmux on the host.
+# Inside tmux the picker shows in a popup; outside it runs inline.
+function th {
+	local picker="$SESSION_TOOLS_DIR/bin/tmux-host-picker"
+	if [[ -n "$TMUX" ]]; then
+		tmux display-popup -E -w 80% -h 70% -T ' Hosts ' "$picker"
+	else
+		"$picker"
+	fi
+}
+
+# td: pick a running docker container and open a shell or its logs.
+# Inside tmux the picker shows in a popup; outside it runs inline.
+function td {
+	local picker="$SESSION_TOOLS_DIR/bin/tmux-docker-picker"
+	if [[ -n "$TMUX" ]]; then
+		tmux display-popup -E -w 80% -h 80% -T ' Containers ' "$picker"
+	else
+		"$picker"
+	fi
+}
+
+# tt-doctor: report the platform and which dependencies are installed.
+alias tt-doctor=tmux-tools-doctor

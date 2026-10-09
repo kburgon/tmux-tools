@@ -1,6 +1,8 @@
 # tmux-tools
 
-Utilities for working with tmux sessions.
+Utilities for working with tmux sessions: project, Claude session, ssh host,
+and docker container pickers, plus a tmux plugin with settings for remote
+development. Works on ChromeOS (Crostini), Linux, and WSL2.
 
 ## Setup
 
@@ -16,17 +18,56 @@ Add to `~/.zshrc` (adjust the path if you cloned elsewhere):
 source ~/Apps/tmux-tools/session-tools.zsh
 ```
 
-Requires `tmux` (3.2+ for popups), `fzf`, and `tree` (for previews).
+Add to the end of `~/.tmux.conf` to load the plugin (or list `kburgon/tmux-tools`
+as a [TPM](https://github.com/tmux-plugins/tpm) plugin):
+
+```tmux
+run-shell ~/Apps/tmux-tools/tmux-tools.tmux
+```
+
+Then run `tt-doctor` to check the platform and dependencies. Requires `tmux`
+3.2+, `fzf` 0.29+, and `jq`; `tree`, `mosh`, and `docker` are optional.
+
+On servers, do the same setup there. `td` and the remote status badge are meant
+for tmux running on the server.
+
+## tmux plugin
+
+`tmux-tools.tmux` applies:
+
+| Setting | Effect |
+| --- | --- |
+| `F12` | Off mode: this tmux ignores its prefix and key bindings, so keys reach a tmux running inside it (e.g. over ssh). The status bar dims and shows `OFF`; press `F12` again to turn it back on. |
+| `M-S` / `M-C` / `M-H` / `M-D` | Popups for `tp`, `tcs`, `th`, `td` |
+| `prefix "` / `%` / `c` | Splits and new windows open in the current pane's directory |
+| copy mode `v` / `y` | Begin selection / copy and exit (vi mode keys) |
+| `set-clipboard on` | Copies reach the local clipboard via OSC 52, including through ssh and mosh |
+| `copy-command` | Set to `wl-copy`, `xclip`, `xsel`, or `clip.exe` when found, for terminals without OSC 52 |
+| `history-limit 50000`, `renumber-windows on` | |
+| Remote badge | Over ssh/mosh, the host name shows at the left of the status bar |
+
+Options (set in `~/.tmux.conf` before the `run-shell` line; `none` disables a key):
+
+```tmux
+set -g @tmux-tools-off-key F12
+set -g @tmux-tools-projects-key M-S
+set -g @tmux-tools-claude-key M-C
+set -g @tmux-tools-hosts-key M-H
+set -g @tmux-tools-docker-key M-D
+set -g @tmux-tools-history-limit 50000
+set -g @tmux-tools-remote-badge on
+```
 
 ## Commands
 
 ### `tp`
 
 Opens an fzf picker of the directories directly inside `~/Projects`. Selecting one creates a tmux session rooted in that
-directory, or switches to it if it already exists. Inside tmux the picker
-shows in a popup; outside tmux it runs inline and then attaches.
-
-Also bound in tmux to `Alt+Shift+S` (`M-S` in `~/.tmux.conf`).
+directory, or switches to it if it already exists. Projects with an open session
+are marked `●`, and `(claude)` when a Claude session is running in it. `Ctrl+X`
+kills the highlighted project's session (asking first if Claude is running there);
+`Ctrl+R` refreshes. Inside tmux the picker shows in a popup; outside tmux it runs
+inline and then attaches.
 
 Environment overrides:
 
@@ -45,4 +86,50 @@ outside tmux it runs inline and attaches on selection.
 Data comes from the registry Claude Code writes to `~/.claude/sessions/<pid>.json`
 (or `$CLAUDE_CONFIG_DIR/sessions`); entries whose process has exited are skipped. The tmux pane is resolved from the
 pane id the registry records, so it stays correct after sessions or windows are
-renamed or moved. Requires `jq`.
+renamed or moved.
+
+### `th`
+
+Opens an fzf picker of ssh hosts, previewing each one's resolved `HostName`,
+`User`, and `Port`. `Enter` connects with mosh (ssh if mosh isn't installed) and
+attaches to a tmux session on the host, creating it if needed; `Ctrl+S` does the
+same over ssh; `Alt+Enter` opens a plain shell without remote tmux. Inside tmux
+the connection opens in a window named after the host, or switches to it if
+one is already open.
+
+Hosts come from `Host` entries in `~/.ssh/config` (wildcards skipped) and one
+name per line in `~/.config/tmux-tools/hosts`.
+
+Environment overrides:
+
+- `TMUX_TOOLS_SSH_CONFIGS`: extra ssh config files to read, colon-separated
+- `TMUX_TOOLS_HOSTS`: hosts file (default `~/.config/tmux-tools/hosts`)
+- `TMUX_TOOLS_REMOTE_SESSION`: remote tmux session name (default `main`)
+
+To use local and remote tmux together, press `F12` after connecting so your keys
+go to the remote tmux.
+
+### `td`
+
+Opens an fzf picker of running docker containers, previewing recent logs.
+`Enter` opens a shell in the container (`bash` if present, else `sh`) in a new
+window; `Ctrl+L` follows its logs; `Ctrl+X` restarts it (asking first); `Ctrl+R`
+refreshes.
+
+### `tt-doctor`
+
+Prints the detected platform (`chromeos`, `wsl`, or `linux`), whether required
+and optional tools are installed (with install hints), how copying reaches the
+clipboard, and whether the tmux plugin is loaded.
+
+## Platform notes
+
+- **ChromeOS**: the Terminal app supports OSC 52, so copying works without extra
+  tools. The top row may send media keys instead of `F12`; hold Search, or set
+  `@tmux-tools-off-key` to another key.
+- **WSL2**: Windows Terminal supports OSC 52, and `clip.exe` is used as a
+  fallback. If your ssh config lives on the Windows side, point
+  `TMUX_TOOLS_SSH_CONFIGS` at it (e.g. `/mnt/c/Users/<you>/.ssh/config`).
+  `td` works locally with Docker Desktop's WSL integration.
+- **Linux**: some terminals (e.g. GNOME Terminal) ignore OSC 52; install
+  `wl-clipboard` (Wayland) or `xclip` (X11) and the plugin uses it.
