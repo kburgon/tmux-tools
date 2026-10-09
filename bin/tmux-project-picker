@@ -1,24 +1,75 @@
 #!/usr/bin/env zsh
 # Pick a directory under $PROJECTS_DIR with fzf and open (or switch to) a
-# tmux session rooted there.
+# tmux session rooted there. ctrl-x kills the highlighted project's session.
+#
+#   tmux-project-picker          interactive picker
+#   tmux-project-picker --list   print the project list (used by reload)
 
 projects_dir="${PROJECTS_DIR:-$HOME/Projects}"
 max_depth="${PROJECTS_DEPTH:-1}"
+bin_dir="${0:A:h}"
 
-selected=$(
+# tmux session names can't contain '.' or ':'
+function session_name {
+	print -r -- "${1//[\/.:]/_}"
+}
+
+# Print the names of tmux sessions that have a running Claude session in them.
+function claude_sessions {
+	local pane
+	for pane in ${(f)"$("$bin_dir/tmux-claude-sessions" --list | cut -f1)"}; do
+		[[ $pane == %* ]] && tmux display-message -p -t "$pane" '#S' 2>/dev/null
+	done
+}
+
+# Print one line per project: "<dir>\t<session>\t<display>". The display marks
+# projects with an open session (●) and those running Claude.
+function list {
+	local dir name mark note
+	local -A open claude
+	for name in ${(f)"$(tmux list-sessions -F '#S' 2>/dev/null)"}; do open[$name]=1; done
+	for name in ${(f)"$(claude_sessions)"}; do claude[$name]=1; done
+
 	find "$projects_dir" -mindepth 1 -maxdepth "$max_depth" \
 		\( -name '.*' -o -name node_modules -o -name bin -o -name obj -o -name target -o -name __pycache__ \) -prune \
 		-o -type d -printf '%P\n' |
 		sort |
-		fzf --reverse --prompt='project> ' \
-			--preview="tree -C -L 1 '$projects_dir'/{}"
+		while IFS= read -r dir; do
+			name=$(session_name "$dir")
+			mark="  "
+			note=""
+			(( $+open[$name] )) && mark=$'\e[32m●\e[0m '
+			(( $+claude[$name] )) && note=$' \e[33m(claude)\e[0m'
+			print -r -- "$dir	$name	$mark$dir$note"
+		done
+}
+
+case $1 in
+	--list) list; exit ;;
+	--kill)
+		tmux has-session -t "=$2" 2>/dev/null || exit 0
+		if [[ -n "$(claude_sessions | grep -Fx -- "$2")" ]]; then
+			read -q "?$2 has a running Claude session. Kill it anyway? [y/N] " || exit 0
+		fi
+		tmux kill-session -t "=$2"
+		exit 0
+		;;
+esac
+
+self=${0:A}
+selected=$(
+	list | fzf --ansi --reverse --prompt='project> ' \
+		--delimiter='\t' --with-nth=3 \
+		--header='enter: open · ctrl-x: kill session · ctrl-r: refresh' \
+		--bind="ctrl-r:reload($self --list)" \
+		--bind="ctrl-x:execute($self --kill {2})+reload($self --list)" \
+		--preview="tree -C -L 1 '$projects_dir'/{1} 2>/dev/null || ls -1 --color=always '$projects_dir'/{1}"
 )
 
 [[ -z "$selected" ]] && exit 0
 
-dir="$projects_dir/$selected"
-# tmux session names can't contain '.' or ':'
-name="${selected//[\/.:]/_}"
+dir="$projects_dir/${selected%%$'\t'*}"
+name=${${selected#*$'\t'}%%$'\t'*}
 
 if ! tmux has-session -t "=$name" 2>/dev/null; then
 	tmux new-session -d -s "$name" -c "$dir"
