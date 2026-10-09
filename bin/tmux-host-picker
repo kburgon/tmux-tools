@@ -1,0 +1,84 @@
+#!/usr/bin/env zsh
+# Pick an ssh host with fzf and connect to it, attaching to tmux on the host.
+#
+#   Enter      mosh (falls back to ssh) and attach/create the remote tmux session
+#   ctrl-s     same, over ssh
+#   alt-enter  plain shell over mosh/ssh, no remote tmux
+#
+# Inside tmux the connection opens in a window named after the host (reused if
+# it's already open); outside tmux it replaces this process.
+#
+# Hosts come from Host entries in ~/.ssh/config and any extra configs listed in
+# $TMUX_TOOLS_SSH_CONFIGS (colon-separated), plus one host per line in
+# ${TMUX_TOOLS_HOSTS:-~/.config/tmux-tools/hosts}.
+
+remote_session="${TMUX_TOOLS_REMOTE_SESSION:-main}"
+hosts_file="${TMUX_TOOLS_HOSTS:-$HOME/.config/tmux-tools/hosts}"
+
+function list {
+	local f line
+	local -a configs=("$HOME/.ssh/config" ${(s.:.)TMUX_TOOLS_SSH_CONFIGS}) hosts=()
+
+	for f in $configs; do
+		[[ -r $f ]] || continue
+		while IFS= read -r line; do
+			# "Host a b c", case-insensitive; skip wildcard and negated patterns.
+			[[ $line =~ '^[[:space:]]*[Hh][Oo][Ss][Tt][[:space:]=]+(.*)$' ]] || continue
+			hosts+=(${${=match[1]}:#*[\*\?\!]*})
+		done < $f
+	done
+
+	if [[ -r $hosts_file ]]; then
+		hosts+=(${${${(f)"$(<$hosts_file)"}%%\#*}//[[:space:]]/})
+	fi
+
+	print -l -- ${(u)hosts:#}
+}
+
+if [[ $1 == --list ]]; then
+	list
+	exit
+fi
+
+hosts=$(list)
+if [[ -z "$hosts" ]]; then
+	print "No hosts found. Add Host entries to ~/.ssh/config or names to $hosts_file."
+	read -rsk1
+	exit 0
+fi
+
+out=$(
+	print -r -- $hosts | fzf --reverse --prompt='host> ' \
+		--header='enter: mosh+tmux · ctrl-s: ssh+tmux · alt-enter: plain shell' \
+		--expect=ctrl-s,alt-enter \
+		--preview='ssh -G {} 2>/dev/null | grep -E "^(hostname|user|port|identityfile|proxyjump) "' \
+		--preview-window='down,30%'
+)
+key=${out%%$'\n'*}
+host=${out#*$'\n'}
+[[ -z "$host" || "$host" == "$out" ]] && exit 0
+
+transport=mosh
+if [[ $key == ctrl-s ]] || (( ! $+commands[mosh] )); then
+	transport=ssh
+fi
+
+cmd=($transport "$host")
+if [[ $key != alt-enter ]]; then
+	if [[ $transport == mosh ]]; then
+		cmd+=(-- tmux new-session -A -s "$remote_session")
+	else
+		cmd+=(-t tmux new-session -A -s "$remote_session")
+	fi
+fi
+
+if [[ -z "$TMUX" ]]; then
+	exec $cmd
+fi
+
+window=$(tmux list-windows -F '#{window_id} #{window_name}' | awk -v h="$host" '$2 == h { print $1; exit }')
+if [[ -n "$window" ]]; then
+	tmux select-window -t "$window"
+else
+	tmux new-window -n "$host" $cmd
+fi
