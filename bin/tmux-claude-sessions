@@ -1,6 +1,11 @@
 #!/usr/bin/env zsh
-# Show a table of running Claude Code sessions and their status.
+# Pick a running Claude Code session with fzf and jump to its tmux pane.
 # Reads the session registry Claude Code keeps in ~/.claude/sessions/<pid>.json.
+#
+#   tmux-claude-sessions          interactive picker
+#   tmux-claude-sessions --list   print the table (used by the picker's reload)
+
+zmodload zsh/datetime
 
 sessions_dir="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/sessions"
 
@@ -14,10 +19,11 @@ function age {
 	fi
 }
 
-function render {
-	zmodload zsh/datetime
-	local f pid proc_start stat name sess_status cwd tmux_loc updated pane loc
-	local -a rows=("NAME	STATUS	TMUX	DIR	UPDATED")
+# Print one line per session: "<pane-id>\t<aligned, colored columns>".
+# The first line is the header; pane-id is "-" for sessions outside tmux.
+function list {
+	local f pid proc_start stat name sess_status cwd tmux_loc updated pane loc win
+	local -a panes=(-) rows=("NAME	STATUS	TMUX	WINDOW	DIR	UPDATED")
 
 	for f in "$sessions_dir"/<->.json(N); do
 		IFS=$'\t' read -r pid proc_start name sess_status cwd tmux_loc updated < <(
@@ -30,30 +36,50 @@ function render {
 		stat=${stat##*) }
 		[[ ${${=stat}[20]} == "$proc_start" ]] || continue
 
-		# Registry stores "session:@window.%pane"; show the current session:window.pane.
-		loc="-"
+		# Registry stores "session:@window.%pane"; the pane id is stable even if
+		# the session or window is renamed or moved, so resolve from it.
+		pane=- loc=- win=-
 		if [[ -n "$tmux_loc" ]]; then
 			pane=${tmux_loc##*.}
-			loc=$(tmux display-message -p -t "$pane" '#S:#I.#P' 2>/dev/null) || loc="$tmux_loc"
+			if IFS=$'\t' read -r loc win < <(tmux display-message -p -t "$pane" '#S:#I.#P	#W' 2>/dev/null); then
+				:
+			else
+				pane=- loc=$tmux_loc win=-
+			fi
 		fi
 
-		rows+=("$name	$sess_status	$loc	${cwd/#$HOME/~}	$(age $updated) ago")
+		panes+=("$pane")
+		rows+=("$name	$sess_status	$loc	$win	${cwd/#$HOME/~}	$(age $updated) ago")
 	done
 
-	clear
-	if (( ${#rows} == 1 )); then
-		print "No running Claude sessions."
-	else
-		print -l -- $rows | column -t -s $'\t' |
-			sed -e '1s/.*/\x1b[1m&\x1b[0m/' \
-				-e 's/\bbusy\b/\x1b[33m&\x1b[0m/' \
-				-e 's/\bidle\b/\x1b[32m&\x1b[0m/'
-	fi
-	print "\n\e[2mr: refresh · any other key: close\e[0m"
+	local -a lines=("${(@f)$(print -l -- $rows | column -t -s $'\t')}")
+	local i
+	for i in {1..$#lines}; do
+		print -r -- "${panes[i]}	${lines[i]}"
+	done | sed -e 's/\bbusy\b/\x1b[33m&\x1b[0m/' -e 's/\bidle\b/\x1b[32m&\x1b[0m/'
 }
 
-while true; do
-	render
-	read -rsk1 key
-	[[ $key == r ]] || break
-done
+if [[ $1 == --list ]]; then
+	list
+	exit
+fi
+
+self=${0:A}
+selected=$(
+	list | fzf --ansi --reverse --header-lines=1 \
+		--delimiter='\t' --with-nth=2.. \
+		--prompt='claude> ' \
+		--header='enter: go to pane · ctrl-r: refresh · esc: close' \
+		--bind="ctrl-r:reload($self --list)" \
+		--preview='[[ {1} != - ]] && tmux capture-pane -ep -t {1}' \
+		--preview-window='down,50%,follow'
+)
+
+pane=${selected%%$'\t'*}
+[[ -z "$pane" || "$pane" == - ]] && exit 0
+
+if [[ -n "$TMUX" ]]; then
+	tmux switch-client -t "$pane" \; select-window -t "$pane" \; select-pane -t "$pane"
+else
+	tmux select-window -t "$pane" \; select-pane -t "$pane" \; attach-session -t "$pane"
+fi
