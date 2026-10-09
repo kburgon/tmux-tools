@@ -1,13 +1,19 @@
-# session-tools
+# tmux-tools
 
 Utilities for working with tmux sessions.
 
 ## Setup
 
-Add to `~/.zshrc`:
+Clone the repository:
 
 ```zsh
-source ~/Apps/session-tools/session-tools.zsh
+git clone git@github.com:kburgon/tmux-tools.git ~/Apps/tmux-tools
+```
+
+Add to `~/.zshrc` (adjust the path if you cloned elsewhere):
+
+```zsh
+source ~/Apps/tmux-tools/session-tools.zsh
 ```
 
 Requires `tmux` (3.2+ for popups), `fzf`, and `tree` (for previews).
