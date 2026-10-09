@@ -1,0 +1,65 @@
+#!/usr/bin/env zsh
+# Report the detected platform and which tmux-tools dependencies are present.
+
+source "${0:A:h:h}/lib/platform.zsh"
+
+platform=$(tt_platform)
+
+function ok { print "  \e[32m✓\e[0m $1" }
+function warn { print "  \e[33m!\e[0m $1" }
+function missing { print "  \e[31m✗\e[0m $1 \e[2m($2)\e[0m" }
+
+# Check a command; $2 is the minimum version (optional), $3 the install hint.
+function check {
+	local cmd=$1 min=$2 hint=$3 ver
+	if (( ! $+commands[$cmd] )); then
+		missing "$cmd" "$hint"
+		return
+	fi
+	case $cmd in
+		tmux) ver=$(tmux -V); ver=${ver#tmux } ;;
+		fzf) ver=${${(z)$(fzf --version)}[1]} ;;
+		*) ver= ;;
+	esac
+	if [[ -n "$min" ]] && ! tt_version_ge "$ver" "$min"; then
+		warn "$cmd $ver (needs $min+; $hint)"
+	else
+		ok "$cmd${ver:+ $ver}"
+	fi
+}
+
+print "Platform: \e[1m$platform\e[0m$(tt_is_remote && print ' (remote session)')"
+
+print "\nRequired"
+check tmux 3.2 'sudo apt install tmux'
+check fzf 0.29 'sudo apt install fzf, or https://github.com/junegunn/fzf'
+check jq '' 'sudo apt install jq'
+
+print "\nOptional"
+check tree '' 'sudo apt install tree; used for project previews'
+check mosh '' 'sudo apt install mosh; th falls back to ssh'
+case $platform in
+	wsl) check docker '' 'enable WSL integration in Docker Desktop' ;;
+	*) check docker '' 'https://docs.docker.com/engine/install/' ;;
+esac
+
+print "\nClipboard"
+copy_cmd=$(tt_copy_cmd)
+if [[ -n "$copy_cmd" ]]; then
+	ok "copy-command: $copy_cmd (plus OSC 52)"
+else
+	case $platform in
+		chromeos) ok "OSC 52 via the ChromeOS Terminal" ;;
+		wsl) warn "OSC 52 only; clip.exe not found on PATH (check WSL interop)" ;;
+		*) warn "OSC 52 only; install wl-clipboard or xclip if your terminal ignores OSC 52" ;;
+	esac
+fi
+
+print "\ntmux plugin"
+if [[ -z "$TMUX" ]]; then
+	warn "not inside tmux; can't check"
+elif [[ -n "$(tmux show -gqv @tmux-tools-loaded)" ]]; then
+	ok "tmux-tools.tmux loaded"
+else
+	warn "not loaded; add to ~/.tmux.conf: run-shell ${0:A:h:h}/tmux-tools.tmux"
+fi
