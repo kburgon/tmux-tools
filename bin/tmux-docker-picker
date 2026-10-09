@@ -1,0 +1,72 @@
+#!/usr/bin/env zsh
+# Pick a running docker container with fzf and open a shell or logs for it.
+#
+#   Enter   shell in the container (bash if present, else sh)
+#   ctrl-l  follow the container's logs
+#   ctrl-x  restart the container (asks first)
+#   ctrl-r  refresh
+#
+# Inside tmux each opens in a new window; outside tmux it replaces this process.
+#
+#   tmux-docker-picker          interactive picker
+#   tmux-docker-picker --list   print the table (used by the picker's reload)
+
+if (( ! $+commands[docker] )); then
+	print "docker not found."
+	read -rsk1
+	exit 1
+fi
+
+# Print one line per container: "<name>\t<column-aligned text>", header first.
+function list {
+	local -a lines=("${(@f)$(
+		{
+			print "NAME	IMAGE	STATUS	PORTS"
+			docker ps --format '{{.Names}}	{{.Image}}	{{.Status}}	{{.Ports}}'
+		} | column -t -s $'\t'
+	)}")
+	local line
+	print -r -- "-	${lines[1]}"
+	for line in ${lines[2,-1]}; do
+		print -r -- "${line%% *}	$line"
+	done
+}
+
+case $1 in
+	--list) list; exit ;;
+	--restart)
+		read -q "?Restart $2? [y/N] " && docker restart "$2" >/dev/null
+		exit 0
+		;;
+esac
+
+self=${0:A}
+out=$(
+	list | fzf --reverse --header-lines=1 \
+		--delimiter='\t' --with-nth=2.. \
+		--prompt='container> ' \
+		--header='enter: shell · ctrl-l: logs · ctrl-x: restart · ctrl-r: refresh' \
+		--expect=ctrl-l \
+		--bind="ctrl-r:reload($self --list)" \
+		--bind="ctrl-x:execute($self --restart {1})+reload($self --list)" \
+		--preview='docker logs --tail 50 {1} 2>&1' \
+		--preview-window='down,50%,follow'
+)
+key=${out%%$'\n'*}
+selected=${out#*$'\n'}
+name=${selected%%$'\t'*}
+[[ -z "$name" || "$selected" == "$out" ]] && exit 0
+
+if [[ $key == ctrl-l ]]; then
+	cmd=(docker logs -f --tail 200 "$name")
+	window="logs:$name"
+else
+	cmd=(docker exec -it "$name" sh -c 'command -v bash >/dev/null && exec bash || exec sh')
+	window="docker:$name"
+fi
+
+if [[ -n "$TMUX" ]]; then
+	tmux new-window -n "$window" $cmd
+else
+	exec $cmd
+fi
