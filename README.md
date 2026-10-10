@@ -40,7 +40,7 @@ for tmux running on the server.
 | `M-:` | Off mode: this tmux ignores its prefix and key bindings, so keys reach a tmux running inside it (e.g. over ssh). The status bar dims and shows `OFF`; press `M-:` again to turn it back on. |
 | Theme | Pane borders, window pills, and status bar styled from one palette (see [Themes](#themes)) |
 | Status right | Claude agent counts by status (`●` busy, `◐` waiting, `○` idle), then session name, then date and time |
-| `M-S` / `M-C` / `M-H` / `M-D` | Popups for `tp`, `tcs`, `th`, `td` |
+| `M-S` / `M-C` / `M-H` / `M-D` / `M-T` | Popups for `tp`, `tcs`, `th`, `td`, `tt-theme` |
 | `prefix "` / `%` / `c` | Splits and new windows open in the current pane's directory |
 | copy mode `v` / `y` | Begin selection / copy and exit (vi mode keys) |
 | `set-clipboard on` | Copies reach the local clipboard via OSC 52, including through ssh and mosh |
@@ -59,7 +59,7 @@ set -g @tmux-tools-docker-key M-D
 set -g @tmux-tools-history-limit 50000
 set -g @tmux-tools-remote-badge on
 set -g @tmux-tools-theme default         # theme name, a path to a theme file, or none
-set -g @tmux-tools-theme-key none        # key for the tt-theme popup
+set -g @tmux-tools-theme-key M-T
 set -g @tmux-tools-color-accent '#88c0d0' # override any palette colour
 set -g @tmux-tools-cap-left none         # pill end caps; none for square ends
 set -g @tmux-tools-cap-right none

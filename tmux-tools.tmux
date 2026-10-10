@@ -50,6 +50,6 @@ popup projects tmux-project-picker 80% 70% M-S Projects
 popup claude tmux-claude-sessions 80% 80% M-C 'Claude sessions'
 popup hosts tmux-host-picker 80% 70% M-H Hosts
 popup docker tmux-docker-picker 80% 80% M-D Containers
-popup theme tmux-theme-picker 70% 50% none Themes
+popup theme tmux-theme-picker 70% 50% M-T Themes
 
 tmux set -g @tmux-tools-loaded 1
