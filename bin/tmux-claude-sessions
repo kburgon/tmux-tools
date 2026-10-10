@@ -6,8 +6,7 @@
 #   tmux-claude-sessions --list   print the table (used by the picker's reload)
 
 zmodload zsh/datetime
-
-sessions_dir="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/sessions"
+source "${0:A:h:h}/lib/claude.zsh"
 
 # Human-readable age from a millisecond epoch timestamp.
 function age {
@@ -22,24 +21,14 @@ function age {
 # Print one line per session: "<pane-id>\t<aligned, colored columns>".
 # The first line is the header; pane-id is "-" for sessions outside tmux.
 function list {
-	local f pid proc_start stat name sess_status cwd tmux_loc updated pane loc win
+	local name sess_status cwd tmux_loc updated pane loc win
 	local -a panes=(-) rows=("NAME	STATUS	TMUX	WINDOW	DIR	UPDATED")
 
-	for f in "$sessions_dir"/<->.json(N); do
-		IFS=$'\t' read -r pid proc_start name sess_status cwd tmux_loc updated < <(
-			jq -r '[.pid, .procStart, .name, .status, .cwd, (.tmux // ""), (.statusUpdatedAt // .updatedAt)] | @tsv' "$f"
-		)
-
-		# Skip stale entries: the process is gone, or the pid was reused.
-		[[ -r /proc/$pid/stat ]] || continue
-		stat=$(</proc/$pid/stat)
-		stat=${stat##*) }
-		[[ ${${=stat}[20]} == "$proc_start" ]] || continue
-
+	while IFS=$'\t' read -r name sess_status cwd tmux_loc updated; do
 		# Registry stores "session:@window.%pane"; the pane id is stable even if
 		# the session or window is renamed or moved, so resolve from it.
 		pane=- loc=- win=-
-		if [[ -n "$tmux_loc" ]]; then
+		if [[ $tmux_loc != - ]]; then
 			pane=${tmux_loc##*.}
 			if IFS=$'\t' read -r loc win < <(tmux display-message -p -t "$pane" '#S:#I.#P	#W' 2>/dev/null); then
 				:
@@ -50,7 +39,7 @@ function list {
 
 		panes+=("$pane")
 		rows+=("$name	$sess_status	$loc	$win	${cwd/#$HOME/~}	$(age $updated) ago")
-	done
+	done < <(tt_claude_sessions)
 
 	local -a lines=("${(@f)$(print -l -- $rows | column -t -s $'\t')}")
 	local i
