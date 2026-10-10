@@ -59,6 +59,7 @@ set -g @tmux-tools-docker-key M-D
 set -g @tmux-tools-history-limit 50000
 set -g @tmux-tools-remote-badge on
 set -g @tmux-tools-theme default         # theme name, a path to a theme file, or none
+set -g @tmux-tools-theme-key none        # key for the tt-theme popup
 set -g @tmux-tools-color-accent '#88c0d0' # override any palette colour
 set -g @tmux-tools-cap-left none         # pill end caps; none for square ends
 set -g @tmux-tools-cap-right none
@@ -69,10 +70,19 @@ set -g @tmux-tools-status-interval 5     # seconds between agent count refreshes
 
 Windows and status segments are drawn as pills floating over the terminal's own
 background. Colours come from a palette in `themes/<name>.zsh`; included themes
-are `default` (green), `nord`, and `gruvbox`. To make your own, copy one of them,
-change the values (colour names, `colourN`, or `#rrggbb`), and set
-`@tmux-tools-theme` to its name (if it's in `themes/`) or its path. Reload with
-`tmux source ~/.tmux.conf`.
+are `default` (green), `nord`, and `gruvbox`.
+
+Run `tt-theme` to pick one: each theme is applied live as you move through the
+list, with its palette and a mock status bar in the preview. `Enter` keeps it
+and `Esc` restores the previous theme. The choice is saved to
+`~/.config/tmux-tools/theme`, so it survives restarts without touching
+`~/.tmux.conf`. Setting `@tmux-tools-theme` in `~/.tmux.conf` takes precedence over it.
+Live preview needs fzf 0.33+.
+
+To make your own theme, copy one into `~/.config/tmux-tools/themes/` (or
+`themes/` in the repo), change the values (colour names, `colourN`, or
+`#rrggbb`), and pick it with `tt-theme`. Colours a theme leaves out fall back to
+`default`.
 
 | Colour | Used for |
 | --- | --- |
@@ -147,6 +157,10 @@ Opens an fzf picker of running docker containers, previewing recent logs.
 `Enter` opens a shell in the container (`bash` if present, else `sh`) in a new
 window; `Ctrl+L` follows its logs; `Ctrl+X` restarts it (asking first); `Ctrl+R`
 refreshes.
+
+### `tt-theme`
+
+Theme picker; see [Themes](#themes).
 
 ### `tt-doctor`
 

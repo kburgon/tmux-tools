@@ -47,5 +47,16 @@ function td {
 	fi
 }
 
+# tt-theme: pick a theme, previewing each one live on the status bar.
+# Inside tmux the picker shows in a popup; outside it runs inline.
+function tt-theme {
+	local picker="$SESSION_TOOLS_DIR/bin/tmux-theme-picker"
+	if [[ -n "$TMUX" ]]; then
+		tmux display-popup -E -w 70% -h 50% -T ' Themes ' "$picker"
+	else
+		"$picker"
+	fi
+}
+
 # tt-doctor: report the platform and which dependencies are installed.
 alias tt-doctor=tmux-tools-doctor

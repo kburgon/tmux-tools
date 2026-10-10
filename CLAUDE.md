@@ -10,8 +10,9 @@ Personal zsh + tmux utilities. No build step, no test suite. Must work on Chrome
 
 - `bin/` — standalone zsh scripts that do the work. Each runs either inside a tmux popup or inline in a terminal, so they check `$TMUX` to decide between tmux commands (`switch-client`, `new-window`) and running inline (`attach-session`, `exec`).
 - `session-tools.zsh` — sourced from `~/.zshrc`; adds `bin/` to `$path` and defines thin wrapper functions (`tp`, `tcs`, `th`, `td`) that open the matching script in `tmux display-popup` when inside tmux, else run it directly.
-- `tmux-tools.tmux` — the tmux plugin (TPM convention), loaded by a `run-shell` line in `~/.tmux.conf`. It's a zsh script issuing `tmux set`/`tmux bind` against the server that ran it. Popup keybindings are built from the script's own directory, so the repo can live anywhere. Popup sizes are duplicated between this file and `session-tools.zsh`; change both. Options are `@tmux-tools-*`, read with `tmux show -gqv`.
+- `tmux-tools.tmux` — the tmux plugin (TPM convention), loaded by a `run-shell` line in `~/.tmux.conf`. It's a zsh script issuing `tmux set`/`tmux bind` against the server that ran it. Popup keybindings are built from the script's own directory, so the repo can live anywhere. Popup sizes are duplicated between this file and `session-tools.zsh`; change both. Options are `@tmux-tools-*`, read via `tt_opt`.
 - `lib/claude.zsh` — `tt_claude_sessions` reads the Claude Code session registry and filters stale entries; used by `tmux-claude-sessions` and `tmux-claude-status`.
+- `lib/theme.zsh` — option loading (`tt_load_opts`/`tt_opt`, one tmux call for all `@tmux-tools-*` options) and theme application; used by the plugin and `bin/tmux-theme-picker`.
 - `lib/platform.zsh` — shared helpers (`tt_platform`, `tt_copy_cmd`, `tt_is_remote`, `tt_version_ge`), sourced by the plugin and `bin/tmux-tools-doctor`. Put platform-specific branching here rather than in individual scripts.
 - The user keeps changes out of `~/.tmux.conf`/`~/.zshrc`; new settings go in the plugin, not their dotfiles.
 
@@ -32,7 +33,7 @@ Every picker follows `bin/tmux-claude-sessions`:
 
 ## Themes
 
-`themes/<name>.zsh` files only assign palette variables (listed in `palette` in `tmux-tools.tmux`; add new ones there too). The plugin always sources `default.zsh` first, so themes may omit colours, then applies `@tmux-tools-color-*` overrides. All styles and formats are built from the palette in the plugin; themes contain no tmux syntax. The agents segment comes from `#(bin/tmux-claude-status <colours...>)`. Arguments go through `job_arg`, which doubles `#` so tmux format expansion doesn't eat hex colours. `%` in status formats is strftime-expanded, so don't pass it to jobs.
+`themes/<name>.zsh` (and `~/.config/tmux-tools/themes/`) files only assign palette variables (listed in `tt_palette` in `lib/theme.zsh`; add new ones there too). `tt_load_palette` always sources `default.zsh` first, so themes may omit colours, then applies `@tmux-tools-color-*` overrides. Themes contain no tmux syntax: `tt_apply_theme` builds all styles, formats, the off-mode bindings, and the remote badge from the palette, and sends them in one batched `tmux` call. Keep it to one call (and options read once via `tt_load_opts`), because `bin/tmux-theme-picker --apply` runs it on every cursor move for live preview. Theme precedence: `@tmux-tools-theme` option, then the picker's saved choice in `~/.config/tmux-tools/theme`, then `default`. The agents segment comes from `#(bin/tmux-claude-status <colours...>)`. Arguments go through `tt_job_arg`, which doubles `#` so tmux format expansion doesn't eat hex colours. `%` in status formats is strftime-expanded, so don't pass it to jobs.
 
 ## Off mode
 
@@ -40,7 +41,8 @@ The plugin's off key (default `M-:`) sets session-level `prefix None`, `key-tabl
 
 ## Checking changes
 
-- `zsh -n bin/* tmux-tools.tmux lib/platform.zsh session-tools.zsh` for syntax.
+- `zsh -n bin/* tmux-tools.tmux lib/*.zsh themes/*.zsh session-tools.zsh` for syntax.
+- Interactive pickers can be driven on the throwaway server: `new-window -d -n pick <script>`, then `send-keys -t pick Down`/`Enter`/`Escape` and inspect options.
 - Run a picker's `--list` and pipe it through `fzf --filter=<text> --delimiter='\t' --with-nth=...` to check the hidden key comes back.
 - Test the plugin on a throwaway server, not the user's live one: `tmux -L tt-test -f /dev/null new -d`, `tmux -L tt-test run-shell $PWD/tmux-tools.tmux`, inspect with `list-keys`/`show -g`, then `kill-server`.
 - To see a rendered status line, attach a client on the throwaway server under `script -qc 'tmux -L tt-test attach' /dev/null` and inspect its output; `display -p` doesn't run `#()` jobs.

@@ -1,0 +1,113 @@
+#!/usr/bin/env zsh
+# Pick a tmux-tools theme with fzf. Inside tmux each highlighted theme is applied
+# live (fzf 0.33+); Enter keeps it, Esc restores the previous one. The choice is
+# saved to ~/.config/tmux-tools/theme, which the plugin uses unless
+# @tmux-tools-theme is set in ~/.tmux.conf.
+#
+#   tmux-theme-picker                  interactive picker
+#   tmux-theme-picker --apply <theme>  apply a theme to the running tmux
+#   tmux-theme-picker --preview <theme> print a palette preview
+
+TT_DIR="${0:A:h:h}"
+source "$TT_DIR/lib/platform.zsh"
+source "$TT_DIR/lib/theme.zsh"
+
+# Print the ANSI SGR parameters for tmux colour $1 as foreground (38) or
+# background (48, with $2 = bg). Names not known to the terminal palette are
+# looked up in X11's rgb.txt, as tmux does.
+function sgr {
+	setopt local_options extended_glob
+	local c=${1:l} base=38 rgb
+	[[ $2 == bg ]] && base=48
+	local -A basic=(black 0 red 1 green 2 yellow 3 blue 4 magenta 5 cyan 6 white 7)
+	if [[ $c == default ]]; then
+		print $(( base + 1 ))
+	elif [[ $c == \#[0-9a-f](#c6) ]]; then
+		print "$base;2;$(( 16#${c[2,3]} ));$(( 16#${c[4,5]} ));$(( 16#${c[6,7]} ))"
+	elif [[ $c == colou#r<-> ]]; then
+		print "$base;5;${c##*r}"
+	elif (( $+basic[$c] )); then
+		print "$base;5;$basic[$c]"
+	elif [[ $c == bright* ]] && (( $+basic[${c#bright}] )); then
+		print "$base;5;$(( basic[${c#bright}] + 8 ))"
+	elif rgb=$(awk -v n="$c" 'tolower($4 $5 $6) == n && NF <= 6 { print $1 ";" $2 ";" $3; exit }' \
+			/usr/share/X11/rgb.txt /etc/X11/rgb.txt 2>/dev/null) && [[ -n $rgb ]]; then
+		print "$base;2;$rgb"
+	else
+		print $(( base + 1 ))
+	fi
+}
+
+# Print theme $1's palette as swatches, then a mock status bar.
+function preview {
+	tt_load_opts
+	tt_load_palette "$1"
+	local L=$(tt_opt cap-left $'') R=$(tt_opt cap-right $'') name
+	[[ $L == none ]] && L=
+	[[ $R == none ]] && R=
+
+	# fg/bg helpers produce escape sequences for palette colours.
+	function fg { print -rn -- $'\e['"$(sgr ${(P)1})m" }
+	function bg { print -rn -- $'\e['"$(sgr ${(P)1} bg)m" }
+	local reset=$'\e[0m'
+
+	print -r -- "$1  ${$(tt_theme_file $1)/#$HOME/~}"
+	print
+	for name in $tt_palette; do
+		print -r -- "  $(bg $name)    $reset  ${(r:14:)name}${(P)name}"
+	done
+	print
+	print -rn -- "  $(fg accent)$L$(bg accent)$(fg on_accent)1 zsh *$reset$(fg accent)$R$reset "
+	print -rn -- "$(fg surface)$L$(bg surface)$(fg accent)2 $(fg text)nvim $(fg accent)-$reset$(fg surface)$R$reset"
+	print -rn -- "    $(fg surface)$L$(bg surface) $(fg busy)● 2 $(fg idle)○ 1$reset$(fg surface)$R$reset "
+	print -rn -- "$(fg surface)$L$(bg surface)$(fg highlight) main $(fg accent)$L$(bg accent)$(fg on_accent) $(date '+%Y-%m-%d %H:%M') $reset$(fg accent)$R$reset"
+	print
+}
+
+case $1 in
+	--apply)
+		tt_load_opts
+		tt_opts[theme]=$2
+		tmux set -g @tmux-tools-theme "$2"
+		tt_apply_theme "$2"
+		exit
+		;;
+	--preview) preview "$2"; exit ;;
+esac
+
+tt_load_opts
+original=$(tt_current_theme)
+names=(${(f)"$(tt_theme_names)"})
+self=${0:A}
+fzf_version=${${(z)$(fzf --version)}[1]}
+
+# Live preview needs fzf's focus event (0.33); starting on the current theme
+# needs start/pos (0.36).
+typeset -a extra
+if [[ -n "$TMUX" ]] && tt_version_ge "$fzf_version" 0.33; then
+	extra+=(--bind="focus:execute-silent($self --apply {})")
+fi
+if (( ${names[(Ie)$original]} )) && tt_version_ge "$fzf_version" 0.36; then
+	extra+=(--bind="start:pos(${names[(Ie)$original]})")
+fi
+
+selected=$(
+	print -l -- $names | fzf --reverse --prompt='theme> ' \
+		--header="current: $original · enter: keep · esc: restore" \
+		--preview="$self --preview {}" \
+		--preview-window='right,60%' \
+		$extra
+)
+
+if [[ -z "$selected" ]]; then
+	[[ -n "$TMUX" ]] && "$self" --apply "$original"
+	exit 0
+fi
+
+mkdir -p "${tt_theme_state:h}"
+print -r -- "$selected" > "$tt_theme_state"
+[[ -n "$TMUX" ]] && "$self" --apply "$selected"
+if grep -qs '^[^#]*@tmux-tools-theme' ~/.tmux.conf; then
+	print "Saved, but @tmux-tools-theme in ~/.tmux.conf takes precedence when tmux restarts."
+	read -rsk1
+fi
