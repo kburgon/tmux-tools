@@ -1,0 +1,29 @@
+#!/usr/bin/env zsh
+# Print a tmux status segment counting running Claude sessions by status, e.g.
+# "● 2 ○ 1" in a pill. Prints nothing when no sessions are running.
+# Called from status-right by tmux-tools.tmux:
+#
+#   tmux-claude-status <surface> <busy> <waiting> <idle> <other> <cap-left> <cap-right>
+
+source "${0:A:h:h}/lib/claude.zsh"
+
+surface=$1 cap_left=$6 cap_right=$7
+typeset -A color=(busy $2 waiting $3 idle $4) icon=(busy ● waiting ◐ idle ○)
+other=$5
+
+typeset -A count
+typeset name sess_status rest
+while IFS=$'\t' read -r name sess_status rest; do
+	(( count[$sess_status]++ ))
+done < <(tt_claude_sessions)
+(( $#count )) || exit 0
+
+# Known statuses first, in a fixed order; anything else after, alphabetically.
+typeset -a order=(busy waiting idle ${(ko)count:#(busy|waiting|idle)})
+typeset s out=
+for s in $order; do
+	(( count[$s] )) || continue
+	out+="#[fg=${color[$s]:-$other}]${icon[$s]:-·} ${count[$s]} "
+done
+
+print -rn -- "#[fg=$surface,bg=default]$cap_left#[bg=$surface] ${out% }#[fg=$surface,bg=default]$cap_right "

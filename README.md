@@ -37,7 +37,9 @@ for tmux running on the server.
 
 | Setting | Effect |
 | --- | --- |
-| `F12` | Off mode: this tmux ignores its prefix and key bindings, so keys reach a tmux running inside it (e.g. over ssh). The status bar dims and shows `OFF`; press `F12` again to turn it back on. |
+| `M-:` | Off mode: this tmux ignores its prefix and key bindings, so keys reach a tmux running inside it (e.g. over ssh). The status bar dims and shows `OFF`; press `M-:` again to turn it back on. |
+| Theme | Pane borders, window pills, and status bar styled from one palette (see [Themes](#themes)) |
+| Status right | Claude agent counts by status (`●` busy, `◐` waiting, `○` idle), then session name, then date and time |
 | `M-S` / `M-C` / `M-H` / `M-D` | Popups for `tp`, `tcs`, `th`, `td` |
 | `prefix "` / `%` / `c` | Splits and new windows open in the current pane's directory |
 | copy mode `v` / `y` | Begin selection / copy and exit (vi mode keys) |
@@ -49,14 +51,44 @@ for tmux running on the server.
 Options (set in `~/.tmux.conf` before the `run-shell` line; `none` disables a key):
 
 ```tmux
-set -g @tmux-tools-off-key F12
+set -g @tmux-tools-off-key M-:
 set -g @tmux-tools-projects-key M-S
 set -g @tmux-tools-claude-key M-C
 set -g @tmux-tools-hosts-key M-H
 set -g @tmux-tools-docker-key M-D
 set -g @tmux-tools-history-limit 50000
 set -g @tmux-tools-remote-badge on
+set -g @tmux-tools-theme default         # theme name, a path to a theme file, or none
+set -g @tmux-tools-color-accent '#88c0d0' # override any palette colour
+set -g @tmux-tools-cap-left none         # pill end caps; none for square ends
+set -g @tmux-tools-cap-right none
+set -g @tmux-tools-status-interval 5     # seconds between agent count refreshes
 ```
+
+## Themes
+
+Windows and status segments are drawn as pills floating over the terminal's own
+background. Colours come from a palette in `themes/<name>.zsh`; included themes
+are `default` (green), `nord`, and `gruvbox`. To make your own, copy one of them,
+change the values (colour names, `colourN`, or `#rrggbb`), and set
+`@tmux-tools-theme` to its name (if it's in `themes/`) or its path. Reload with
+`tmux source ~/.tmux.conf`.
+
+| Colour | Used for |
+| --- | --- |
+| `accent` / `on_accent` | Current window, date pill, copy mode, messages / text on them |
+| `surface` / `text` | Other windows, agents, session pill / window names on them |
+| `highlight` | Session name |
+| `border` / `border_active` | Pane borders / active pane border and clock |
+| `busy` / `waiting` / `idle` | Claude agent counts |
+| `muted` | Status text in off mode |
+| `remote` | Host badge on remote machines |
+
+The pill ends use Nerd Font half circles. If your font doesn't have them, set
+`@tmux-tools-cap-left` and `@tmux-tools-cap-right` to `none`.
+
+The plugin replaces any status and window styles set earlier in `~/.tmux.conf`,
+so those lines can be removed.
 
 ## Commands
 
@@ -106,7 +138,7 @@ Environment overrides:
 - `TMUX_TOOLS_HOSTS`: hosts file (default `~/.config/tmux-tools/hosts`)
 - `TMUX_TOOLS_REMOTE_SESSION`: remote tmux session name (default `main`)
 
-To use local and remote tmux together, press `F12` after connecting so your keys
+To use local and remote tmux together, press `M-:` after connecting so your keys
 go to the remote tmux.
 
 ### `td`
@@ -125,8 +157,7 @@ clipboard, and whether the tmux plugin is loaded.
 ## Platform notes
 
 - **ChromeOS**: the Terminal app supports OSC 52, so copying works without extra
-  tools. The top row may send media keys instead of `F12`; hold Search, or set
-  `@tmux-tools-off-key` to another key.
+  tools.
 - **WSL2**: Windows Terminal supports OSC 52, and `clip.exe` is used as a
   fallback. If your ssh config lives on the Windows side, point
   `TMUX_TOOLS_SSH_CONFIGS` at it (e.g. `/mnt/c/Users/<you>/.ssh/config`).
